@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { api } from "@/lib/api";
 
 export type Tag = {
   id: string;
@@ -8,34 +9,49 @@ export type Tag = {
 
 type TagStore = {
   tags: Tag[];
-  createTag: (name: string, color: string) => void;
-  updateTag: (id: string, updates: Partial<Pick<Tag, "name" | "color">>) => void;
-  deleteTag: (id: string) => void;
-  /** Reserved for future API sync — replaces the entire list. */
-  _setTags: (tags: Tag[]) => void;
+  isLoading: boolean;
+  fetchTags: () => Promise<void>;
+  createTag: (name: string, color: string) => Promise<void>;
+  updateTag: (id: string, updates: Partial<Pick<Tag, "name" | "color">>) => Promise<void>;
+  deleteTag: (id: string) => Promise<void>;
 };
 
-const MOCK_TAGS: Tag[] = [
-  { id: "tag-1", name: "Bug", color: "#ef4444" },
-  { id: "tag-2", name: "Feature", color: "#3b82f6" },
-  { id: "tag-3", name: "Design", color: "#a855f7" },
-  { id: "tag-4", name: "Urgent", color: "#f97316" },
-];
+function fromApi(t: Record<string, string>): Tag {
+  return { id: t._id, name: t.name, color: t.color };
+}
 
-const uid = () => crypto.randomUUID();
+async function loadTags(): Promise<Tag[]> {
+  const data = await api.get<Record<string, string>[]>("/tags");
+  return data.map(fromApi);
+}
 
 export const useTagStore = create<TagStore>((set) => ({
-  tags: MOCK_TAGS,
+  tags:      [],
+  isLoading: false,
 
-  createTag: (name, color) =>
-    set((s) => ({ tags: [...s.tags, { id: uid(), name, color }] })),
+  fetchTags: async () => {
+    set({ isLoading: true });
+    try {
+      set({ tags: await loadTags() });
+    } catch (err) {
+      console.error("[Tags] fetch failed:", err);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 
-  updateTag: (id, updates) =>
-    set((s) => ({
-      tags: s.tags.map((t) => (t.id === id ? { ...t, ...updates } : t)),
-    })),
+  createTag: async (name, color) => {
+    await api.post("/tags", { name, color });
+    set({ tags: await loadTags() });
+  },
 
-  deleteTag: (id) => set((s) => ({ tags: s.tags.filter((t) => t.id !== id) })),
+  updateTag: async (id, updates) => {
+    await api.patch(`/tags/${id}`, updates);
+    set({ tags: await loadTags() });
+  },
 
-  _setTags: (tags) => set({ tags }),
+  deleteTag: async (id) => {
+    await api.delete(`/tags/${id}`);
+    set({ tags: await loadTags() });
+  },
 }));

@@ -11,14 +11,17 @@ export function AuthSync() {
 
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
-      const user = {
-        name: session.user.name,
-        email: session.user.email,
-        image: session.user.image,
+      setUser({
+        name:        session.user.name,
+        email:       session.user.email,
+        image:       session.user.image,
         accessToken: session.accessToken,
-      };
-      setUser(user);
-      console.log("[AuthSync] user logged in:", user);
+      });
+
+      // upsert user ใน MongoDB ผ่าน proxy — Google token ถูกแนบอัตโนมัติ
+      fetch("/api/users/sync", { method: "POST" }).catch((err) => {
+        console.error("[AuthSync] sync failed:", err);
+      });
     } else if (status === "unauthenticated") {
       setUser(null);
     }

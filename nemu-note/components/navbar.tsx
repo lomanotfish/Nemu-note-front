@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button, Kbd, Link, TextField, InputGroup } from "@heroui/react";
 import NextLink from "next/link";
 import clsx from "clsx";
+import { signOut, useSession } from "next-auth/react";
 
 import { siteConfig } from "@/config/site";
 import { ThemeSwitch } from "@/components/theme-switch";
@@ -18,6 +19,12 @@ import {
 
 export const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { data: session } = useSession();
+  const userName = session?.user?.name;
+
+  const handleLogout = () => {
+    signOut({ callbackUrl: "/login" });
+  };
 
   const searchInput = (
     <TextField aria-label="Search" type="search">
@@ -64,6 +71,12 @@ export const Navbar = () => {
           Nemu note
         </h1>
 
+        {userName && (
+          <p className="text-sm text-muted hidden sm:block">
+            ยินดีต้อนรับ, <span className="font-semibold text-foreground">{userName}</span>
+          </p>
+        )}
+
         <div className="hidden sm:flex items-center gap-2">
           {/* <Link
             aria-label="Twitter"
@@ -91,7 +104,7 @@ export const Navbar = () => {
           </Link> */}
       
           <ThemeSwitch />
-          <Button variant="secondary">Log out</Button>
+          <Button variant="secondary" onPress={handleLogout}>Log out</Button>
           {/* <div className="hidden lg:flex">{searchInput}</div> */}
         </div>
 

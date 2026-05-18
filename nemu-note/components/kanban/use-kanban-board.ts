@@ -1,10 +1,36 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+
 import { arrayMove } from "@dnd-kit/sortable";
 
-import { MOCK_BOARD } from "./mock-data";
+import { api } from "@/lib/api";
+import { useDebouncedCallback } from "@/lib/debounce";
+
 import type { Board, Column, Task } from "./types";
 
-const uid = () => crypto.randomUUID();
+// ─── transformer ─────────────────────────────────────────────────────────────
+
+function toBoard(data: any): Board {
+  return {
+    columns: [...(data.columns ?? [])]
+      .sort((a: any, b: any) => a.order - b.order)
+      .map((col: any) => ({
+        id:      col._id,
+        title:   col.title,
+        bgColor: col.bgColor,
+        tasks: [...(col.tasks ?? [])]
+          .sort((a: any, b: any) => a.order - b.order)
+          .map((t: any) => ({
+            id:     t._id,
+            title:  t.title,
+            tagIds: (t.tagIds ?? []).map((tag: any) =>
+              typeof tag === "string" ? tag : tag._id,
+            ),
+          })),
+      })),
+  };
+}
+
+// ─── local helpers ────────────────────────────────────────────────────────────
 
 function replaceColumn(board: Board, idx: number, next: Column): Board {
   const cols = board.columns.slice();
@@ -12,61 +38,64 @@ function replaceColumn(board: Board, idx: number, next: Column): Board {
   return { columns: cols };
 }
 
-function findColumnIdxByTaskId(board: Board, taskId: string): number {
+function findColIdxByTaskId(board: Board, taskId: string): number {
   return board.columns.findIndex((c) => c.tasks.some((t) => t.id === taskId));
 }
 
 export type MoveTaskTarget = "task" | "column";
 
+// ─── hook ─────────────────────────────────────────────────────────────────────
+
 export function useKanbanBoard() {
   const [board, setBoard] = useState<Board | null>(null);
 
-  const createBoard = useCallback(() => setBoard(MOCK_BOARD), []);
+  const boardIdRef = useRef<string | null>(null);
+  const dragStartColRef  = useRef<string | null>(null);
 
-  const addColumn = useCallback((title: string) => {
-    setBoard((prev) =>
-      prev ? { columns: [...prev.columns, { id: uid(), title, tasks: [] }] } : prev,
-    );
+  // ── internal: refetch board from server ──────────────────────────────────────
+
+  const refreshBoard = useCallback(async (id: string) => {
+    const boards = await api.get<any[]>("/boards");
+    const fresh  = boards.find((b: any) => b._id === id) ?? boards[0];
+    if (fresh) setBoard(toBoard(fresh));
   }, []);
 
-  const addTask = useCallback((colId: string, title: string) => {
-    setBoard((prev) => {
-      if (!prev) return prev;
-      const idx = prev.columns.findIndex((c) => c.id === colId);
-      if (idx === -1) return prev;
-      const col = prev.columns[idx];
-      return replaceColumn(prev, idx, {
-        ...col,
-        tasks: [...col.tasks, { id: uid(), title }],
-      });
-    });
+  // ── load ─────────────────────────────────────────────────────────────────────
+
+  const loadBoard = useCallback(async () => {
+    try {
+      const boards = await api.get<any[]>("/boards");
+      if (boards.length > 0) {
+        const b = boards[0];
+        boardIdRef.current = b._id;
+        setBoard(toBoard(b));
+      } else {
+        const created = await api.post<any>("/boards", { name: "My Board" });
+        boardIdRef.current = created._id;
+        setBoard(toBoard(created));
+      }
+    } catch (err) {
+      console.error("[Kanban] loadBoard failed:", err);
+    }
   }, []);
 
-  const renameTask = useCallback((taskId: string, title: string) => {
-    setBoard((prev) => {
-      if (!prev) return prev;
-      const idx = findColumnIdxByTaskId(prev, taskId);
-      if (idx === -1) return prev;
-      const col = prev.columns[idx];
-      return replaceColumn(prev, idx, {
-        ...col,
-        tasks: col.tasks.map((t) => (t.id === taskId ? { ...t, title } : t)),
-      });
-    });
-  }, []);
+  // ── column mutations ─────────────────────────────────────────────────────────
 
-  const deleteTask = useCallback((taskId: string) => {
-    setBoard((prev) => {
-      if (!prev) return prev;
-      const idx = findColumnIdxByTaskId(prev, taskId);
-      if (idx === -1) return prev;
-      const col = prev.columns[idx];
-      return replaceColumn(prev, idx, {
-        ...col,
-        tasks: col.tasks.filter((t) => t.id !== taskId),
-      });
-    });
-  }, []);
+  const addColumn = useCallback(async (title: string) => {
+    const id = boardIdRef.current;
+    if (!id) return;
+    await api.post(`/boards/${id}/columns`, { title });
+    await refreshBoard(id);
+  }, [refreshBoard]);
+
+  const colorColumnApi = useCallback(async (colId: string, color: string) => {
+    const id = boardIdRef.current;
+    if (!id) return;
+    await api.patch(`/boards/${id}/columns/${colId}`, { bgColor: color }).catch(console.error);
+    await refreshBoard(id);
+  }, [refreshBoard]);
+
+  const colorColumnApiDebounced = useDebouncedCallback(colorColumnApi, 400);
 
   const colorColumn = useCallback((colId: string, color: string) => {
     setBoard((prev) => {
@@ -75,12 +104,60 @@ export function useKanbanBoard() {
       if (idx === -1) return prev;
       return replaceColumn(prev, idx, { ...prev.columns[idx], bgColor: color });
     });
-  }, []);
+    colorColumnApiDebounced(colId, color);
+  }, [colorColumnApiDebounced]);
 
-  const toggleTaskTag = useCallback((taskId: string, tagId: string) => {
+  // ── task mutations ────────────────────────────────────────────────────────────
+
+  const addTask = useCallback(async (colId: string, title: string) => {
+    const id = boardIdRef.current;
+    if (!id) return;
+    await api.post(`/boards/${id}/columns/${colId}/tasks`, { title });
+    await refreshBoard(id);
+  }, [refreshBoard]);
+
+  const renameTask = useCallback(async (taskId: string, title: string) => {
+    const id = boardIdRef.current;
+    if (!id) return;
     setBoard((prev) => {
       if (!prev) return prev;
-      const idx = findColumnIdxByTaskId(prev, taskId);
+      const idx = findColIdxByTaskId(prev, taskId);
+      if (idx === -1) return prev;
+      const col = prev.columns[idx];
+      return replaceColumn(prev, idx, {
+        ...col,
+        tasks: col.tasks.map((t) => (t.id === taskId ? { ...t, title } : t)),
+      });
+    });
+    await api.patch(`/boards/${id}/tasks/${taskId}`, { title }).catch(console.error);
+    await refreshBoard(id);
+  }, [refreshBoard]);
+
+  const deleteTask = useCallback(async (taskId: string) => {
+    const id = boardIdRef.current;
+    if (!id) return;
+    setBoard((prev) => {
+      if (!prev) return prev;
+      const idx = findColIdxByTaskId(prev, taskId);
+      if (idx === -1) return prev;
+      const col = prev.columns[idx];
+      return replaceColumn(prev, idx, {
+        ...col,
+        tasks: col.tasks.filter((t) => t.id !== taskId),
+      });
+    });
+    await api.delete(`/boards/${id}/tasks/${taskId}`).catch(console.error);
+    await refreshBoard(id);
+  }, [refreshBoard]);
+
+  const toggleTaskTag = useCallback(async (taskId: string, tagId: string) => {
+    const id = boardIdRef.current;
+    if (!id) return;
+    let nextTagIds: string[] = [];
+
+    setBoard((prev) => {
+      if (!prev) return prev;
+      const idx = findColIdxByTaskId(prev, taskId);
       if (idx === -1) return prev;
       const col = prev.columns[idx];
       return replaceColumn(prev, idx, {
@@ -88,49 +165,61 @@ export function useKanbanBoard() {
         tasks: col.tasks.map((t): Task => {
           if (t.id !== taskId) return t;
           const existing = t.tagIds ?? [];
-          const tagIds = existing.includes(tagId)
-            ? existing.filter((id) => id !== tagId)
+          nextTagIds = existing.includes(tagId)
+            ? existing.filter((tid) => tid !== tagId)
             : [...existing, tagId];
-          return { ...t, tagIds };
+          return { ...t, tagIds: nextTagIds };
         }),
       });
     });
+
+    await api
+      .patch(`/boards/${id}/tasks/${taskId}`, { tagIds: nextTagIds })
+      .catch(console.error);
+    await refreshBoard(id);
+  }, [refreshBoard]);
+
+  // ── DnD — local only during drag ─────────────────────────────────────────────
+
+  const recordDragStart = useCallback((taskId: string) => {
+    setBoard((prev) => {
+      if (!prev) return prev;
+      const col = prev.columns.find((c) => c.tasks.some((t) => t.id === taskId));
+      dragStartColRef.current = col?.id ?? null;
+      return prev;
+    });
   }, []);
 
-  // Called from onDragOver to move a task within or across columns.
   const moveTask = useCallback(
     (activeId: string, overId: string, target: MoveTaskTarget) => {
       setBoard((prev) => {
         if (!prev) return prev;
-        const srcIdx = findColumnIdxByTaskId(prev, activeId);
+        const srcIdx = findColIdxByTaskId(prev, activeId);
         if (srcIdx === -1) return prev;
 
         const dstIdx =
           target === "task"
-            ? findColumnIdxByTaskId(prev, overId)
+            ? findColIdxByTaskId(prev, overId)
             : prev.columns.findIndex((c) => c.id === overId);
         if (dstIdx === -1) return prev;
 
         const srcCol = prev.columns[srcIdx];
-        const task = srcCol.tasks.find((t) => t.id === activeId);
+        const task   = srcCol.tasks.find((t) => t.id === activeId);
         if (!task) return prev;
 
-        // Reorder within the same column.
         if (srcIdx === dstIdx && target === "task") {
           const from = srcCol.tasks.findIndex((t) => t.id === activeId);
-          const to = srcCol.tasks.findIndex((t) => t.id === overId);
+          const to   = srcCol.tasks.findIndex((t) => t.id === overId);
           return replaceColumn(prev, srcIdx, {
             ...srcCol,
             tasks: arrayMove(srcCol.tasks, from, to),
           });
         }
 
-        // Cross-column move: insert at target task index, or append when dropped on column body.
-        const dstCol = prev.columns[dstIdx];
+        const dstCol    = prev.columns[dstIdx];
         const dstTasks: Task[] = dstCol.tasks.slice();
         if (target === "task") {
-          const insertAt = dstCol.tasks.findIndex((t) => t.id === overId);
-          dstTasks.splice(insertAt, 0, task);
+          dstTasks.splice(dstCol.tasks.findIndex((t) => t.id === overId), 0, task);
         } else {
           dstTasks.push(task);
         }
@@ -148,22 +237,63 @@ export function useKanbanBoard() {
     setBoard((prev) => {
       if (!prev) return prev;
       const from = prev.columns.findIndex((c) => c.id === activeId);
-      const to = prev.columns.findIndex((c) => c.id === overId);
+      const to   = prev.columns.findIndex((c) => c.id === overId);
       if (from === -1 || to === -1) return prev;
       return { columns: arrayMove(prev.columns, from, to) };
     });
   }, []);
 
+  // ── sync to API after dragEnd — refetch once drop is committed ───────────────
+
+  const syncTaskDrop = useCallback(async (taskId: string) => {
+    const id = boardIdRef.current;
+    if (!id) return;
+    let toColId  = "";
+    let newOrder = 0;
+
+    setBoard((prev) => {
+      if (!prev) return prev;
+      const toCol = prev.columns.find((c) => c.tasks.some((t) => t.id === taskId));
+      if (toCol) {
+        toColId  = toCol.id;
+        newOrder = toCol.tasks.findIndex((t) => t.id === taskId);
+      }
+      return prev;
+    });
+
+    if (toColId) {
+      await api
+        .patch(`/boards/${id}/tasks/${taskId}/move`, { toColId, newOrder })
+        .catch(console.error);
+      await refreshBoard(id);
+    }
+  }, [refreshBoard]);
+
+  const syncColumnReorder = useCallback(
+    async (orderedIds: string[]) => {
+      const id = boardIdRef.current;
+      if (!id) return;
+      await api
+        .patch(`/boards/${id}/columns/reorder`, { orderedIds })
+        .catch(console.error);
+      await refreshBoard(id);
+    },
+    [refreshBoard],
+  );
+
   return {
     board,
-    createBoard,
+    loadBoard,
     addColumn,
     addTask,
     renameTask,
     deleteTask,
     colorColumn,
     toggleTaskTag,
+    recordDragStart,
     moveTask,
     reorderColumns,
+    syncTaskDrop,
+    syncColumnReorder,
   };
 }

@@ -4,9 +4,9 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"dev": "next dev",
-		"build": "next build",
-		"start": "next start",
+		"dev": "node ./node_modules/.bin/next dev",
+		"build": "node ./node_modules/.bin/next build",
+		"start": "node ./node_modules/.bin/next start",
 		"lint": "eslint --fix"
 	},
 	"dependencies": {
@@ -16,7 +16,8 @@
 		"@heroui/react": "3.0.4",
 		"@heroui/styles": "3.0.4",
 		"@iconify/react": "^6.0.2",
-		"clsx": "2.1.1",
+		"axios": "^1.16.1",
+		"clsx": "^2.1.1",
 		"intl-messageformat": "10.7.16",
 		"next": "16.2.6",
 		"next-auth": "^5.0.0-beta.31",

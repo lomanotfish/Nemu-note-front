@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -12,8 +12,9 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { SortableContext, horizontalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext, arrayMove, horizontalListSortingStrategy } from "@dnd-kit/sortable";
 
+import { useTagStore } from "@/store/use-tag-store";
 import ColorPicker from "@/components/color-picker";
 
 import { InlineAddForm } from "./kanban/inline-add-form";
@@ -24,29 +25,45 @@ import { useKanbanBoard } from "./kanban/use-kanban-board";
 export default function KanbanBoard() {
   const {
     board,
-    createBoard,
+    loadBoard,
     addColumn,
     addTask,
     renameTask,
     deleteTask,
     colorColumn,
     toggleTaskTag,
+    recordDragStart,
     moveTask,
     reorderColumns,
+    syncTaskDrop,
+    syncColumnReorder,
   } = useKanbanBoard();
 
+  const { fetchTags } = useTagStore();
+
   const [activeTask, setActiveTask] = useState<Task | null>(null);
-  const [boardBg, setBoardBg] = useState<string | null>(null);
+  const [boardBg, setBoardBg]       = useState<string | null>(null);
+
+  // โหลด board และ tags เมื่อ component mount
+  useEffect(() => {
+    loadBoard();
+    fetchTags();
+  }, [loadBoard, fetchTags]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
-  const handleDragStart = useCallback(({ active }: DragStartEvent) => {
-    if (active.data.current?.type === DragType.Task) {
-      setActiveTask(active.data.current.task as Task);
-    }
-  }, []);
+  const handleDragStart = useCallback(
+    ({ active }: DragStartEvent) => {
+      if (active.data.current?.type === DragType.Task) {
+        const task = active.data.current.task as Task;
+        setActiveTask(task);
+        recordDragStart(task.id);
+      }
+    },
+    [recordDragStart],
+  );
 
   const handleDragOver = useCallback(
     ({ active, over }: DragOverEvent) => {
@@ -54,7 +71,8 @@ export default function KanbanBoard() {
       if (active.data.current?.type !== DragType.Task) return;
 
       const overType = over.data.current?.type;
-      if (overType === DragType.Task) moveTask(String(active.id), String(over.id), "task");
+      if (overType === DragType.Task)
+        moveTask(String(active.id), String(over.id), "task");
       else if (overType === DragType.Column)
         moveTask(String(active.id), String(over.id), "column");
     },
@@ -65,10 +83,21 @@ export default function KanbanBoard() {
     ({ active, over }: DragEndEvent) => {
       setActiveTask(null);
       if (!over || active.id === over.id) return;
-      if (active.data.current?.type !== DragType.Column) return;
-      reorderColumns(String(active.id), String(over.id));
+
+      if (active.data.current?.type === DragType.Column) {
+        // คำนวณ orderedIds จาก board state ปัจจุบันก่อนที่ reorderColumns จะ update
+        const cols = board?.columns ?? [];
+        const from = cols.findIndex((c) => c.id === String(active.id));
+        const to   = cols.findIndex((c) => c.id === String(over.id));
+        const orderedIds = arrayMove(cols.map((c) => c.id), from, to);
+
+        reorderColumns(String(active.id), String(over.id));
+        syncColumnReorder(orderedIds);
+      } else if (active.data.current?.type === DragType.Task) {
+        syncTaskDrop(String(active.id));
+      }
     },
-    [reorderColumns],
+    [board, reorderColumns, syncColumnReorder, syncTaskDrop],
   );
 
   const columnIds = useMemo(
@@ -76,7 +105,13 @@ export default function KanbanBoard() {
     [board?.columns],
   );
 
-  if (!board) return <EmptyState onCreate={createBoard} />;
+  if (!board) {
+    return (
+      <div className="flex min-h-96 items-center justify-center">
+        <p className="text-sm text-default-400">กำลังโหลด board…</p>
+      </div>
+    );
+  }
 
   return (
     <DndContext
@@ -86,11 +121,7 @@ export default function KanbanBoard() {
       onDragOver={handleDragOver}
       onDragStart={handleDragStart}
     >
-      <BoardToolbar
-        bgColor={boardBg}
-        onChange={setBoardBg}
-        onReset={() => setBoardBg(null)}
-      />
+      <BoardToolbar bgColor={boardBg} onChange={setBoardBg} onReset={() => setBoardBg(null)} />
 
       <div
         className="flex gap-4 overflow-x-auto rounded-xl p-4 pb-4 transition-colors"
@@ -131,31 +162,7 @@ export default function KanbanBoard() {
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div className="flex min-h-96 flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed border-default-300 p-8">
-      <div className="text-center">
-        <h2 className="text-xl font-bold">No board yet</h2>
-        <p className="mt-1 text-sm text-default-500">
-          Start by creating a board with sample columns
-        </p>
-      </div>
-      <button
-        className="rounded-xl bg-primary px-6 py-3 font-medium text-black transition-opacity hover:opacity-90"
-        type="button"
-        onClick={onCreate}
-      >
-        Create Board
-      </button>
-    </div>
-  );
-}
-
-type ToolbarProps = {
-  bgColor: string | null;
-  onChange: (color: string) => void;
-  onReset: () => void;
-};
+type ToolbarProps = { bgColor: string | null; onChange: (c: string) => void; onReset: () => void };
 
 function BoardToolbar({ bgColor, onChange, onReset }: ToolbarProps) {
   return (
@@ -163,11 +170,7 @@ function BoardToolbar({ bgColor, onChange, onReset }: ToolbarProps) {
       <span className="text-xs text-default-500">Board color</span>
       <ColorPicker value={bgColor ?? "#ffffff"} onChange={onChange} />
       {bgColor && (
-        <button
-          className="text-xs text-default-400 hover:text-default-600"
-          type="button"
-          onClick={onReset}
-        >
+        <button className="text-xs text-default-400 hover:text-default-600" type="button" onClick={onReset}>
           Reset
         </button>
       )}

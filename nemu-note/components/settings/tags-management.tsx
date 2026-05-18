@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ColorPicker from "@/components/color-picker";
+import { useDebouncedCallback } from "@/lib/debounce";
 import { useTagStore, type Tag } from "@/store/use-tag-store";
 
 const PRESET_COLORS = [
@@ -16,13 +17,20 @@ const PRESET_COLORS = [
 ];
 
 export default function TagsManagement() {
-  const { tags, createTag, updateTag, deleteTag } = useTagStore();
+  const { tags, fetchTags, createTag, updateTag, deleteTag } = useTagStore();
 
-  const [newName, setNewName] = useState("");
-  const [newColor, setNewColor] = useState(PRESET_COLORS[4]);
+  const debouncedUpdateTagColor = useDebouncedCallback(
+    (id: string, color: string) => updateTag(id, { color }),
+    400,
+  );
+
+  const [newName, setNewName]     = useState("");
+  const [newColor, setNewColor]   = useState(PRESET_COLORS[4]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const newInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { fetchTags(); }, [fetchTags]);
 
   function handleCreate() {
     const name = newName.trim();
@@ -141,7 +149,7 @@ export default function TagsManagement() {
                 {/* Color picker to change tag color */}
                 <ColorPicker
                   value={tag.color}
-                  onChange={(color) => updateTag(tag.id, { color })}
+                  onChange={(color) => debouncedUpdateTagColor(tag.id, color)}
                 />
 
                 {/* Tag badge preview */}

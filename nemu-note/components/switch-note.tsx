@@ -1,5 +1,6 @@
 'use client'
 import KanbanBoard from "@/components/kanban-board";
+import Note from "@/components/note";
 import {Key, Tabs} from "@heroui/react";
 import { useState } from "react";
 
@@ -23,7 +24,7 @@ export default function SwitchNote() {
       </Tabs.ListContainer>
     </Tabs>
     {
-      activeTab === "note" ? <></> : <KanbanBoard />
+      activeTab === "note" ? <Note /> : <KanbanBoard />
     }
     </div>
   );
