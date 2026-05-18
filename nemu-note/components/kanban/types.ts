@@ -1,6 +1,7 @@
 export type Task = {
   id: string;
   title: string;
+  tagIds?: string[];
 };
 
 export type Column = {

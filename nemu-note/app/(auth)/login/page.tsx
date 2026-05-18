@@ -14,7 +14,7 @@ export default function LoginPage() {
   };
 
   return (
-    <section className="flex min-h-screen flex-col items-center justify-center gap-6">
+    <section className="flex min-h-full flex-col items-center justify-center gap-6">
       <div className="flex flex-col items-center gap-2 text-center">
         <h1 className="text-3xl font-bold">Welcome to Nemu Note</h1>
         <p className="text-default-500">Sign in to continue</p>

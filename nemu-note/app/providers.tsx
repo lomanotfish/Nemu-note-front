@@ -6,6 +6,8 @@ import * as React from "react";
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { SessionProvider } from "next-auth/react";
 
+import { AuthSync } from "@/components/auth-sync";
+
 export interface ProvidersProps {
   children: React.ReactNode;
   themeProps?: ThemeProviderProps;
@@ -14,6 +16,7 @@ export interface ProvidersProps {
 export function Providers({ children, themeProps }: ProvidersProps) {
   return (
     <SessionProvider>
+      <AuthSync />
       <NextThemesProvider {...themeProps}>{children}</NextThemesProvider>
     </SessionProvider>
   );

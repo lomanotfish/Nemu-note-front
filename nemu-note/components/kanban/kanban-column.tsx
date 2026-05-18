@@ -20,6 +20,7 @@ type Props = {
   onRenameTask: (taskId: string, title: string) => void;
   onDeleteTask: (taskId: string) => void;
   onColorChange: (colId: string, color: string) => void;
+  onToggleTag: (taskId: string, tagId: string) => void;
 };
 
 function KanbanColumnImpl({
@@ -28,6 +29,7 @@ function KanbanColumnImpl({
   onRenameTask,
   onDeleteTask,
   onColorChange,
+  onToggleTag,
 }: Props) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: column.id,
@@ -76,6 +78,7 @@ function KanbanColumnImpl({
               task={task}
               onDelete={onDeleteTask}
               onRename={onRenameTask}
+              onToggleTag={onToggleTag}
             />
           ))}
         </div>

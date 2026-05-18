@@ -30,6 +30,7 @@ export default function KanbanBoard() {
     renameTask,
     deleteTask,
     colorColumn,
+    toggleTaskTag,
     moveTask,
     reorderColumns,
   } = useKanbanBoard();
@@ -104,6 +105,7 @@ export default function KanbanBoard() {
               onColorChange={colorColumn}
               onDeleteTask={deleteTask}
               onRenameTask={renameTask}
+              onToggleTag={toggleTaskTag}
             />
           ))}
         </SortableContext>

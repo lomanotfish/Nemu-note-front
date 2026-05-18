@@ -77,6 +77,26 @@ export function useKanbanBoard() {
     });
   }, []);
 
+  const toggleTaskTag = useCallback((taskId: string, tagId: string) => {
+    setBoard((prev) => {
+      if (!prev) return prev;
+      const idx = findColumnIdxByTaskId(prev, taskId);
+      if (idx === -1) return prev;
+      const col = prev.columns[idx];
+      return replaceColumn(prev, idx, {
+        ...col,
+        tasks: col.tasks.map((t): Task => {
+          if (t.id !== taskId) return t;
+          const existing = t.tagIds ?? [];
+          const tagIds = existing.includes(tagId)
+            ? existing.filter((id) => id !== tagId)
+            : [...existing, tagId];
+          return { ...t, tagIds };
+        }),
+      });
+    });
+  }, []);
+
   // Called from onDragOver to move a task within or across columns.
   const moveTask = useCallback(
     (activeId: string, overId: string, target: MoveTaskTarget) => {
@@ -142,6 +162,7 @@ export function useKanbanBoard() {
     renameTask,
     deleteTask,
     colorColumn,
+    toggleTaskTag,
     moveTask,
     reorderColumns,
   };

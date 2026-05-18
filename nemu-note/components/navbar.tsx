@@ -39,7 +39,7 @@ export const Navbar = () => {
   return (
     <nav className="sticky top-0 z-40 w-full border-b border-separator bg-background/70 backdrop-blur-lg">
       <header className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-4 px-6">
-        <div className="flex items-center gap-4">
+        {/* <div className="flex items-center gap-4">
           <NextLink className="flex items-center gap-1" href="/">
             <Logo />
             <p className="font-bold text-inherit">ACME</p>
@@ -59,10 +59,13 @@ export const Navbar = () => {
               </li>
             ))}
           </ul>
-        </div>
+        </div> */}
+        <h1>
+          Nemu note
+        </h1>
 
         <div className="hidden sm:flex items-center gap-2">
-          <Link
+          {/* <Link
             aria-label="Twitter"
             href={siteConfig.links.twitter}
             rel="noopener noreferrer"
@@ -85,19 +88,11 @@ export const Navbar = () => {
             target="_blank"
           >
             <GithubIcon className="text-muted" />
-          </Link>
+          </Link> */}
+      
           <ThemeSwitch />
-          <div className="hidden lg:flex">{searchInput}</div>
-          <div className="hidden md:flex">
-            <Button
-              className="text-sm font-normal"
-              variant="tertiary"
-              onPress={() => window.open(siteConfig.links.sponsor, "_blank")}
-            >
-              <HeartFilledIcon className="text-danger" />
-              Sponsor
-            </Button>
-          </div>
+          <Button variant="secondary">Log out</Button>
+          {/* <div className="hidden lg:flex">{searchInput}</div> */}
         </div>
 
         <div className="flex sm:hidden items-center gap-2">
